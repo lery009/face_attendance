@@ -105,21 +105,21 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> sendEmployeeData({    /// THIS IS FOR REGISTRATION
-    required String id,
-    required String createdAt,
+     String? id,
+     String? createdAt,
     required String name,
     required String firstname,
     required String lastname,
     required String employeeId,
     required String department,
     required String email,
-    required String profile,
+     String? profile,
     required List<double> embeddings,
   }) async {
     final url = Uri.parse('$baseUrl/employees');
 
     final body = {
-      "id": id,
+    //  "id": id,
      // "createdAt": createdAt,
       "name": name,
       "firstname": firstname,
