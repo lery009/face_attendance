@@ -1,0 +1,1 @@
+/Users/FDSAP-JLVILLANUEVA/StudioProjects/RealtimeFaceRecognition2026Starter/build/app/intermediates/cxx/Debug/72s275jc/obj/armeabi-v7a
