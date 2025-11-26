@@ -360,15 +360,15 @@ class _RecognitionScreenState extends State<RecognitionScreen> {
         ),
       );
 
-      //TODO View for displaying rectangles around detected aces
-      stackChildren.add(
-        Positioned(
-            top: 0.0,
-            left: 0.0,
-            width: size.width,
-            height: size.height,
-            child: buildResult()),
-      );
+      //TODO View for displaying rectangles around detected aces - DISABLED
+      // stackChildren.add(
+      //   Positioned(
+      //       top: 0.0,
+      //       left: 0.0,
+      //       width: size.width,
+      //       height: size.height,
+      //       child: buildResult()),
+      // );
     }
 
     // Passive liveness status banner

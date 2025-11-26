@@ -15,6 +15,12 @@ class Recognizer {
   static const int OUTPUT = 512;
   final apiService = ApiService();
 
+  // Recognition threshold - only accept matches with score >= this value
+  // Lower values are MORE similar (cosine distance)
+  // Typical good threshold: 0.8-1.0 for strict matching
+  // Increased to 0.95 to prevent false positives
+  static const double RECOGNITION_THRESHOLD = 0.95;
+
   @override
   String get modelName => 'assets/facenet.tflite';
 
@@ -72,8 +78,19 @@ class Recognizer {
       embedding: outputArray,
     );
 
-    if (matchResponse != null && matchResponse.match.isMatch) {
+    // Debug logging to see what the API is returning
+    if (matchResponse != null) {
+      print("🔍 Match Response: ${matchResponse.match.name}, Score: ${matchResponse.match.score.toStringAsFixed(3)}, isMatch: ${matchResponse.match.isMatch}");
+    } else {
+      print("🔍 No match response from API");
+    }
+
+    // Validate match with both server response AND client-side threshold
+    if (matchResponse != null &&
+        matchResponse.match.isMatch &&
+        matchResponse.match.score >= RECOGNITION_THRESHOLD) {
       // Return recognized employee with full details
+      print("✅ ACCEPTED: ${matchResponse.match.name} (Score: ${matchResponse.match.score.toStringAsFixed(3)} >= ${RECOGNITION_THRESHOLD})");
       return Recognition(
         matchResponse.match.name,
         location,
@@ -81,7 +98,10 @@ class Recognizer {
         matchResponse.match.score,
       );
     } else {
-      // Return unknown
+      // Return unknown - either no match, or score too low
+      if (matchResponse != null && matchResponse.match.isMatch) {
+        print("❌ REJECTED: ${matchResponse.match.name} (Score: ${matchResponse.match.score.toStringAsFixed(3)} < ${RECOGNITION_THRESHOLD})");
+      }
       return Recognition("Unknown", location, outputArray, 0.0);
     }
   }

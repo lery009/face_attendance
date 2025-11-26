@@ -64,8 +64,9 @@ class LivenessDetector:
 
         except Exception as e:
             print(f"❌ Liveness detection error: {e}")
-            # Fail open (assume live) to avoid blocking real users
-            return True, 0.5, "error"
+            # SECURITY: Fail closed (reject) to prevent spoofing attacks
+            # Better to reject a real user temporarily than allow photo spoofing
+            return False, 0.0, "error"
 
     def _texture_analysis(self, gray_image):
         """

@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timedelta
+from database import get_ph_time
 from sqlalchemy.orm import Session
 import uuid
 
@@ -115,7 +116,7 @@ async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": get_ph_time().isoformat(),
         "liveness_enabled": settings.ENABLE_LIVENESS
     }
 
@@ -186,7 +187,7 @@ async def detect_and_recognize(
                 cooldown = timedelta(minutes=settings.ATTENDANCE_COOLDOWN_MINUTES)
                 recent_attendance = db.query(AttendanceLog).filter(
                     AttendanceLog.employee_id == employee_id,
-                    AttendanceLog.timestamp > datetime.utcnow() - cooldown
+                    AttendanceLog.timestamp > get_ph_time() - cooldown
                 ).first()
 
                 if not recent_attendance:
@@ -257,6 +258,21 @@ async def register_employee_with_image(
                 status_code=400,
                 detail="No face detected in image. Please provide a clear face photo."
             )
+
+        # SECURITY: Check liveness to prevent photo registration
+        # Decode image for liveness check
+        image = face_processor.decode_base64_image(request.image)
+        face_crop = face_processor.extract_face_crop(image, face_location)
+        is_live, liveness_confidence, liveness_method = face_processor.liveness_detector.check_liveness(face_crop)
+
+        if not is_live:
+            print(f"❌ Registration rejected: Photo/screen detected (confidence: {liveness_confidence:.3f})")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Liveness check failed. Please use a live camera, not a photo or screen. (Score: {liveness_confidence:.2f})"
+            )
+
+        print(f"✅ Liveness check passed (confidence: {liveness_confidence:.3f})")
 
         # Create new employee
         employee = Employee(
@@ -538,6 +554,21 @@ async def online_registration(
                 status_code=400,
                 detail="No face detected in the image. Please upload a clear photo of your face with good lighting."
             )
+
+        # SECURITY: Check liveness to prevent photo registration
+        # Decode image for liveness check
+        image = face_processor.decode_base64_image(request.image)
+        face_crop = face_processor.extract_face_crop(image, face_location)
+        is_live, liveness_confidence, liveness_method = face_processor.liveness_detector.check_liveness(face_crop)
+
+        if not is_live:
+            print(f"❌ Online registration rejected: Photo/screen detected (confidence: {liveness_confidence:.3f})")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Registration rejected: Please use a live camera to take your photo, not a picture or screenshot. Anti-spoofing score: {liveness_confidence:.2f}"
+            )
+
+        print(f"✅ Liveness check passed for online registration (confidence: {liveness_confidence:.3f})")
 
         # Create full name
         full_name = f"{request.firstname} {request.lastname}"
@@ -861,7 +892,7 @@ async def update_event(
                 )
                 db.add(participant)
 
-        event.updated_at = datetime.utcnow()
+        event.updated_at = get_ph_time()
         db.commit()
 
         return {
@@ -928,13 +959,13 @@ async def mark_event_attendance(
 
         # Mark as attended
         participant.status = "attended"
-        participant.attended_at = datetime.utcnow()
+        participant.attended_at = get_ph_time()
 
         # Also create attendance log linked to event
         attendance_log = AttendanceLog(
             id=str(uuid.uuid4()),
             employee_id=request.employee_id,
-            timestamp=datetime.utcnow(),
+            timestamp=get_ph_time(),
             method="event_checkin",
             event_id=event_id
         )
@@ -966,7 +997,7 @@ async def get_event_stats(db: Session = Depends(get_db)):
         upcoming_events = db.query(Event).filter(
             Event.is_active == True,
             Event.status == "upcoming",
-            Event.event_date >= datetime.utcnow()
+            Event.event_date >= get_ph_time()
         ).count()
 
         # Completed events

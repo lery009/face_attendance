@@ -5,7 +5,13 @@ from sqlalchemy import create_engine, Column, String, DateTime, JSON, Boolean, T
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from config import settings
+
+# Helper function to get current time in Philippines timezone
+def get_ph_time():
+    """Get current datetime in Philippines timezone (UTC+8)"""
+    return datetime.now(ZoneInfo(settings.TIMEZONE))
 
 # Create database engine
 engine = create_engine(settings.DATABASE_URL, echo=True)
@@ -28,8 +34,8 @@ class Employee(Base):
     department = Column(String(255))
     email = Column(String(255))
     embeddings = Column(JSON, nullable=False)  # Store face embeddings as JSON array
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ph_time)
+    updated_at = Column(DateTime, default=get_ph_time, onupdate=get_ph_time)
     is_active = Column(Boolean, default=True)
 
 class AttendanceLog(Base):
@@ -37,7 +43,7 @@ class AttendanceLog(Base):
 
     id = Column(String(255), primary_key=True, index=True)
     employee_id = Column(String(255), nullable=False, index=True)
-    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    timestamp = Column(DateTime, default=get_ph_time, index=True)
     confidence = Column(String(50))
     method = Column(String(50), default="face_recognition")  # face_recognition, manual, etc.
     event_id = Column(String(255), nullable=True, index=True)  # Link to event if attendance is for an event
@@ -54,8 +60,8 @@ class Event(Base):
     location = Column(String(255), nullable=True)
     status = Column(String(50), default="upcoming")  # upcoming, ongoing, completed, cancelled
     created_by = Column(String(255), nullable=True)  # Employee ID of creator
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ph_time)
+    updated_at = Column(DateTime, default=get_ph_time, onupdate=get_ph_time)
     is_active = Column(Boolean, default=True)
 
 class EventParticipant(Base):
@@ -67,8 +73,8 @@ class EventParticipant(Base):
     is_required = Column(Boolean, default=True)  # Is attendance mandatory?
     status = Column(String(50), default="invited")  # invited, confirmed, attended, absent
     attended_at = Column(DateTime, nullable=True)  # When they checked in
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ph_time)
+    updated_at = Column(DateTime, default=get_ph_time, onupdate=get_ph_time)
 
 # Create all tables
 def init_db():

@@ -50,4 +50,7 @@ class Settings:
     # Attendance Settings
     ATTENDANCE_COOLDOWN_MINUTES = int(os.getenv("ATTENDANCE_COOLDOWN_MINUTES", "5"))
 
+    # Timezone Settings
+    TIMEZONE = os.getenv("TIMEZONE", "Asia/Manila")  # Philippines Standard Time (UTC+8)
+
 settings = Settings()

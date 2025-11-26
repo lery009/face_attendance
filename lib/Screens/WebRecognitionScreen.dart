@@ -428,19 +428,19 @@ class _WebRecognitionScreenState extends State<WebRecognitionScreen> with Single
                 ),
               ),
 
-            // Face detection overlay
-            if (controller != null && controller!.value.isInitialized)
-              CustomPaint(
-                painter: FaceOverlayPainter(
-                  detectedFaces,
-                  centerFace,
-                  Size(
-                    controller!.value.previewSize!.height,
-                    controller!.value.previewSize!.width,
-                  ),
-                ),
-                size: Size.infinite,
-              ),
+            // Face detection overlay - DISABLED
+            // if (controller != null && controller!.value.isInitialized)
+            //   CustomPaint(
+            //     painter: FaceOverlayPainter(
+            //       detectedFaces,
+            //       centerFace,
+            //       Size(
+            //         controller!.value.previewSize!.height,
+            //         controller!.value.previewSize!.width,
+            //       ),
+            //     ),
+            //     size: Size.infinite,
+            //   ),
 
             // Status banner
             Positioned(
