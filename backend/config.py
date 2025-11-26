@@ -25,7 +25,7 @@ class Settings:
 
     # Liveness Detection Settings
     ENABLE_LIVENESS = os.getenv("ENABLE_LIVENESS", "true").lower() == "true"
-    LIVENESS_THRESHOLD = float(os.getenv("LIVENESS_THRESHOLD", "0.7"))
+    LIVENESS_THRESHOLD = float(os.getenv("LIVENESS_THRESHOLD", "0.75"))  # Stricter threshold
 
     # Performance Settings
     FACE_DETECTION_MODEL = os.getenv("FACE_DETECTION_MODEL", "hog")  # "hog" or "cnn"
@@ -34,6 +34,9 @@ class Settings:
     # CORS Settings
     CORS_ORIGINS = [
         "http://localhost",
+        "http://localhost:*",  # Allow all localhost ports
+        "http://127.0.0.1",
+        "http://127.0.0.1:*",  # Allow all 127.0.0.1 ports
         "http://localhost:3000",
         "http://localhost:8080",
         "http://10.22.0.231:3000",

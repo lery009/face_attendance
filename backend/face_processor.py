@@ -7,7 +7,7 @@ import cv2
 from PIL import Image
 import io
 import base64
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Any, Dict
 from config import settings
 from liveness_detector import LivenessDetector
 
@@ -18,6 +18,32 @@ class FaceProcessor:
         self.tolerance = settings.FACE_RECOGNITION_TOLERANCE
         self.model = settings.FACE_DETECTION_MODEL
         self.liveness_detector = LivenessDetector()
+
+    @staticmethod
+    def convert_numpy_types(obj: Any) -> Any:
+        """
+        Recursively convert numpy types to Python native types
+
+        Args:
+            obj: Object that may contain numpy types
+
+        Returns:
+            Object with all numpy types converted to Python native types
+        """
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, dict):
+            return {key: FaceProcessor.convert_numpy_types(value) for key, value in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [FaceProcessor.convert_numpy_types(item) for item in obj]
+        else:
+            return obj
 
     def decode_base64_image(self, base64_string: str) -> np.ndarray:
         """
@@ -62,7 +88,14 @@ class FaceProcessor:
             List of tuples: (face_location, face_encoding)
         """
         try:
+            print(f"🔍 Detecting faces in image...")
+            print(f"   Image shape: {image.shape}")
+            print(f"   Image dtype: {image.dtype}")
+            print(f"   Image range: {image.min()} - {image.max()}")
+            print(f"   Detection model: {self.model}")
+
             # Detect face locations
+            print(f"   Running face_recognition.face_locations()...")
             face_locations = face_recognition.face_locations(
                 image,
                 model=self.model,
@@ -70,7 +103,12 @@ class FaceProcessor:
             )
 
             if not face_locations:
-                print("ℹ️ No faces detected")
+                print("   ❌ No faces detected by face_recognition library")
+                print("   💡 Possible issues:")
+                print("      - Face too small (minimum ~80x80 pixels)")
+                print("      - Poor lighting or image quality")
+                print("      - Face not looking forward")
+                print("      - Try changing model from 'hog' to 'cnn' in config.py")
                 return []
 
             # Limit number of faces
@@ -210,7 +248,7 @@ class FaceProcessor:
                         "name": employee_name,
                         "employeeId": employee_id,
                         "confidence": float(confidence),
-                        "isLive": is_live,
+                        "isLive": bool(is_live),  # Convert numpy.bool_ to Python bool
                         "livenessConfidence": float(liveness_confidence)
                     })
                 else:
@@ -220,11 +258,12 @@ class FaceProcessor:
                         "name": "Unknown",
                         "employeeId": "",
                         "confidence": 0.0,
-                        "isLive": is_live,
+                        "isLive": bool(is_live),  # Convert numpy.bool_ to Python bool
                         "livenessConfidence": float(liveness_confidence)
                     })
 
-            return results
+            # Ensure all numpy types are converted to Python native types
+            return self.convert_numpy_types(results)
 
         except Exception as e:
             print(f"❌ Processing error: {e}")

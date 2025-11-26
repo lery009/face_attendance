@@ -32,18 +32,19 @@ class MyApp extends StatelessWidget {
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
-import 'package:realtime_face_recognition_2026/Screens/HomeScreen.dart';
+import 'package:realtime_face_recognition_2026/Screens/DashboardScreen.dart';
 
 late List<CameraDescription> cameras;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Only initialize cameras if not on web or if web supports it
+  // Initialize cameras - works on both web (webcam) and mobile
   try {
     cameras = await availableCameras();
+    print('✅ Cameras initialized: ${cameras.length} camera(s) found');
   } catch (e) {
-    print('Camera initialization error: $e');
+    print('⚠️ Camera initialization error: $e');
     cameras = [];
   }
 
@@ -54,11 +55,13 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Face Recognition',
+      title: 'Face Recognition Attendance',
       theme: ThemeData(
-        primarySwatch: Colors.deepPurple,
+        primarySwatch: Colors.blue,
+        primaryColor: const Color(0xFF1E3A8A),
       ),
-      home: HomeScreen(),
+      home: DashboardScreen(),
+      debugShowCheckedModeBanner: false,
     );
   }
 }

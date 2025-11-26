@@ -1,9 +1,9 @@
 """
 Database Configuration and Models
 """
-from sqlalchemy import create_engine, Column, String, DateTime, JSON, Boolean
+from sqlalchemy import create_engine, Column, String, DateTime, JSON, Boolean, Text, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
 from config import settings
 
@@ -40,6 +40,35 @@ class AttendanceLog(Base):
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
     confidence = Column(String(50))
     method = Column(String(50), default="face_recognition")  # face_recognition, manual, etc.
+    event_id = Column(String(255), nullable=True, index=True)  # Link to event if attendance is for an event
+
+class Event(Base):
+    __tablename__ = "events"
+
+    id = Column(String(255), primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    event_date = Column(DateTime, nullable=False, index=True)
+    start_time = Column(String(50), nullable=True)  # HH:MM format
+    end_time = Column(String(50), nullable=True)    # HH:MM format
+    location = Column(String(255), nullable=True)
+    status = Column(String(50), default="upcoming")  # upcoming, ongoing, completed, cancelled
+    created_by = Column(String(255), nullable=True)  # Employee ID of creator
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
+
+class EventParticipant(Base):
+    __tablename__ = "event_participants"
+
+    id = Column(String(255), primary_key=True, index=True)
+    event_id = Column(String(255), ForeignKey('events.id'), nullable=False, index=True)
+    employee_id = Column(String(255), ForeignKey('employees.employee_id'), nullable=False, index=True)
+    is_required = Column(Boolean, default=True)  # Is attendance mandatory?
+    status = Column(String(50), default="invited")  # invited, confirmed, attended, absent
+    attended_at = Column(DateTime, nullable=True)  # When they checked in
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 # Create all tables
 def init_db():

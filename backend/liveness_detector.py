@@ -37,12 +37,16 @@ class LivenessDetector:
             texture_score = self._texture_analysis(gray)
             frequency_score = self._frequency_analysis(gray)
             color_score = self._color_diversity_analysis(face_image)
+            blur_score = self._blur_detection(gray)
+            reflection_score = self._reflection_detection(face_image)
 
-            # Combine scores (weighted average)
+            # Combine scores (weighted average with more emphasis on anti-spoofing)
             combined_score = (
-                texture_score * 0.4 +
-                frequency_score * 0.3 +
-                color_score * 0.3
+                texture_score * 0.25 +
+                frequency_score * 0.25 +
+                color_score * 0.20 +
+                blur_score * 0.15 +
+                reflection_score * 0.15
             )
 
             is_live = combined_score > self.threshold
@@ -51,8 +55,10 @@ class LivenessDetector:
             print(f"   Texture: {texture_score:.3f}")
             print(f"   Frequency: {frequency_score:.3f}")
             print(f"   Color: {color_score:.3f}")
-            print(f"   Combined: {combined_score:.3f}")
-            print(f"   Result: {'✅ LIVE' if is_live else '❌ PHOTO'}")
+            print(f"   Blur: {blur_score:.3f}")
+            print(f"   Reflection: {reflection_score:.3f}")
+            print(f"   Combined: {combined_score:.3f} (Threshold: {self.threshold})")
+            print(f"   Result: {'✅ LIVE' if is_live else '❌ PHOTO/SCREEN'}")
 
             return is_live, combined_score, "multi_method"
 
@@ -76,11 +82,85 @@ class LivenessDetector:
         laplacian = cv2.Laplacian(gray_image, cv2.CV_64F)
         variance = laplacian.var()
 
-        # Normalize variance score
-        # Real faces typically have variance > 100
-        # Photos often have variance < 50
-        score = min(variance / 150.0, 1.0)
+        # Normalize variance score - STRICTER thresholds
+        # Real faces typically have variance > 120
+        # Photos often have variance < 60
+        score = min(variance / 180.0, 1.0)
 
+        return score
+
+    def _blur_detection(self, gray_image):
+        """
+        Detect unnatural blur patterns (photos/screens have different blur)
+
+        Args:
+            gray_image: Grayscale face image
+
+        Returns:
+            float: Blur score (0-1, higher = more likely real)
+        """
+        # Calculate sharpness using variance of Laplacian
+        laplacian = cv2.Laplacian(gray_image, cv2.CV_64F)
+        sharpness = laplacian.var()
+
+        # Photos/printed images often have uniform blur or excessive sharpness
+        # Real faces have natural sharpness variation
+
+        # Also check gradient magnitude distribution
+        sobelx = cv2.Sobel(gray_image, cv2.CV_64F, 1, 0, ksize=3)
+        sobely = cv2.Sobel(gray_image, cv2.CV_64F, 0, 1, ksize=3)
+        gradient_magnitude = np.sqrt(sobelx**2 + sobely**2)
+        gradient_std = gradient_magnitude.std()
+
+        # Real faces: sharpness 50-500, gradient_std > 15
+        # Photos: often outside this range
+        sharpness_score = 1.0 if 50 < sharpness < 500 else 0.3
+        gradient_score = min(gradient_std / 25.0, 1.0)
+
+        score = (sharpness_score + gradient_score) / 2
+        return score
+
+    def _reflection_detection(self, rgb_image):
+        """
+        Detect screen reflections and glare (common in photos/screens)
+
+        Args:
+            rgb_image: RGB face image
+
+        Returns:
+            float: Reflection score (0-1, higher = more likely real)
+        """
+        if len(rgb_image.shape) != 3:
+            return 0.5
+
+        # Convert to grayscale for reflection analysis
+        gray = cv2.cvtColor(rgb_image, cv2.COLOR_RGB2GRAY)
+
+        # Detect very bright spots (reflections/glare)
+        bright_threshold = 240
+        very_bright_pixels = np.sum(gray > bright_threshold)
+        total_pixels = gray.shape[0] * gray.shape[1]
+        bright_ratio = very_bright_pixels / total_pixels
+
+        # Real faces: < 2% very bright pixels
+        # Photos/screens: often > 5% (reflections, glare)
+        if bright_ratio > 0.05:
+            reflection_penalty = 0.3
+        elif bright_ratio > 0.02:
+            reflection_penalty = 0.6
+        else:
+            reflection_penalty = 1.0
+
+        # Check for unnatural contrast (screens often have higher contrast)
+        contrast = gray.std()
+        # Real faces: contrast 30-60
+        # Photos/screens: often > 70 or < 20
+        if 30 < contrast < 60:
+            contrast_score = 1.0
+        else:
+            contrast_score = 0.5
+
+        score = (reflection_penalty + contrast_score) / 2
         return score
 
     def _frequency_analysis(self, gray_image):
