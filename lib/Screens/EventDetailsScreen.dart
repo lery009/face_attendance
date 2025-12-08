@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../api/api_service.dart';
+import 'EventInvitationScreen.dart';
+import 'LiveMonitoringScreen.dart';
 
 class EventDetailsScreen extends StatefulWidget {
   final String eventId;
@@ -16,6 +18,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
 
   Map<String, dynamic>? event;
   List<Map<String, dynamic>> participants = [];
+  List<Map<String, dynamic>> linkedCameras = [];
   bool isLoading = true;
 
   @override
@@ -29,6 +32,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
 
     try {
       final response = await apiService.getEventDetails(widget.eventId);
+      final camerasResponse = await apiService.getEventCameras(widget.eventId);
 
       setState(() {
         if (response['success'] == true) {
@@ -37,12 +41,28 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
               .map((p) => p as Map<String, dynamic>)
               .toList();
         }
+        if (camerasResponse['success'] == true) {
+          linkedCameras = (camerasResponse['cameras'] as List<dynamic>)
+              .map((c) => c as Map<String, dynamic>)
+              .toList();
+        }
         isLoading = false;
       });
     } catch (e) {
       print('Error loading event details: $e');
       setState(() => isLoading = false);
     }
+  }
+
+  Future<void> showCameraManagementDialog() async {
+    await showDialog(
+      context: context,
+      builder: (context) => EventCameraDialog(
+        eventId: widget.eventId,
+        linkedCameras: linkedCameras,
+        onCamerasUpdated: loadEventDetails,
+      ),
+    );
   }
 
   Future<void> markAttendance(String employeeId, String employeeName) async {
@@ -151,6 +171,36 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
         backgroundColor: const Color(0xFF1E3A8A),
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.videocam),
+            onPressed: showCameraManagementDialog,
+            tooltip: 'Manage Cameras',
+          ),
+          if (linkedCameras.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.monitor),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => LiveMonitoringScreen(eventId: widget.eventId),
+                  ),
+                );
+              },
+              tooltip: 'Live Monitoring',
+            ),
+          IconButton(
+            icon: const Icon(Icons.person_add),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => EventInvitationScreen(event: event!),
+                ),
+              ).then((_) => loadEventDetails()); // Refresh after returning
+            },
+            tooltip: 'Manage Participants & Invitations',
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: loadEventDetails,
@@ -490,6 +540,322 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
                 tooltip: 'Mark as Attended',
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Event Camera Management Dialog
+class EventCameraDialog extends StatefulWidget {
+  final String eventId;
+  final List<Map<String, dynamic>> linkedCameras;
+  final VoidCallback onCamerasUpdated;
+
+  const EventCameraDialog({
+    super.key,
+    required this.eventId,
+    required this.linkedCameras,
+    required this.onCamerasUpdated,
+  });
+
+  @override
+  State<EventCameraDialog> createState() => _EventCameraDialogState();
+}
+
+class _EventCameraDialogState extends State<EventCameraDialog> {
+  final ApiService apiService = ApiService();
+
+  List<Map<String, dynamic>> allCameras = [];
+  bool isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    loadAllCameras();
+  }
+
+  Future<void> loadAllCameras() async {
+    setState(() => isLoading = true);
+
+    try {
+      final response = await apiService.getCameras();
+      if (response['success'] == true && mounted) {
+        setState(() {
+          allCameras = List<Map<String, dynamic>>.from(response['cameras'] ?? []);
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading cameras: $e');
+      setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> linkCamera(String cameraId, String cameraName) async {
+    final response = await apiService.linkCameraToEvent(
+      eventId: widget.eventId,
+      cameraId: cameraId,
+    );
+
+    if (response['success'] == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$cameraName linked to event'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      widget.onCamerasUpdated();
+      Navigator.pop(context);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(response['message'] ?? 'Failed to link camera'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> unlinkCamera(String cameraId, String cameraName) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Unlink Camera'),
+        content: Text('Remove "$cameraName" from this event?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            child: const Text('Unlink'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      final response = await apiService.unlinkCameraFromEvent(
+        eventId: widget.eventId,
+        cameraId: cameraId,
+      );
+
+      if (response['success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$cameraName unlinked from event'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        widget.onCamerasUpdated();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(response['message'] ?? 'Failed to unlink camera'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'online':
+        return const Color(0xFF10B981);
+      case 'offline':
+        return const Color(0xFF6B7280);
+      case 'error':
+        return const Color(0xFFEF4444);
+      default:
+        return Colors.grey;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final linkedCameraIds = widget.linkedCameras.map((c) => c['id']).toSet();
+    final availableCameras = allCameras.where((c) => !linkedCameraIds.contains(c['id'])).toList();
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Container(
+        width: 600,
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.videocam, color: Color(0xFF1E3A8A)),
+                const SizedBox(width: 12),
+                const Text(
+                  'Manage Event Cameras',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // Linked Cameras Section
+            Text(
+              'Linked Cameras (${widget.linkedCameras.length})',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            if (widget.linkedCameras.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Center(
+                  child: Text(
+                    'No cameras linked to this event',
+                    style: TextStyle(color: Colors.grey[600]),
+                  ),
+                ),
+              )
+            else
+              ...widget.linkedCameras.map((camera) => Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: const Color(0xFF1E3A8A).withOpacity(0.1),
+                        child: const Icon(Icons.videocam, color: Color(0xFF1E3A8A)),
+                      ),
+                      title: Text(camera['name'] ?? 'Unnamed'),
+                      subtitle: Row(
+                        children: [
+                          Text((camera['camera_type'] ?? 'Unknown').toUpperCase()),
+                          const SizedBox(width: 8),
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: _getStatusColor(camera['status'] ?? 'offline'),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            camera['status'] ?? 'offline',
+                            style: TextStyle(
+                              color: _getStatusColor(camera['status'] ?? 'offline'),
+                              fontSize: 12,
+                            ),
+                          ),
+                          if (camera['is_primary'] == true) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF59E0B).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'PRIMARY',
+                                style: TextStyle(
+                                  color: Color(0xFFF59E0B),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.link_off, color: Colors.red),
+                        onPressed: () => unlinkCamera(camera['id'], camera['name']),
+                      ),
+                    ),
+                  )),
+
+            const SizedBox(height: 24),
+
+            // Available Cameras Section
+            Text(
+              'Available Cameras (${availableCameras.length})',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            if (isLoading)
+              const Center(child: CircularProgressIndicator())
+            else if (availableCameras.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Center(
+                  child: Text(
+                    'All cameras are linked or no cameras available',
+                    style: TextStyle(color: Colors.grey[600]),
+                  ),
+                ),
+              )
+            else
+              Container(
+                constraints: const BoxConstraints(maxHeight: 200),
+                child: ListView(
+                  shrinkWrap: true,
+                  children: availableCameras.map((camera) => Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: Colors.grey[200],
+                            child: const Icon(Icons.videocam, color: Colors.grey),
+                          ),
+                          title: Text(camera['name'] ?? 'Unnamed'),
+                          subtitle: Row(
+                            children: [
+                              Text((camera['camera_type'] ?? 'Unknown').toUpperCase()),
+                              if (camera['location'] != null && camera['location'].toString().isNotEmpty) ...[
+                                const SizedBox(width: 8),
+                                Text('• ${camera['location']}'),
+                              ],
+                            ],
+                          ),
+                          trailing: ElevatedButton.icon(
+                            onPressed: () => linkCamera(camera['id'], camera['name']),
+                            icon: const Icon(Icons.link, size: 16),
+                            label: const Text('Link'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF1E3A8A),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            ),
+                          ),
+                        ),
+                      )).toList(),
+                ),
+              ),
           ],
         ),
       ),

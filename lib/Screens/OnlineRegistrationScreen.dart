@@ -5,7 +5,9 @@ import 'package:camera/camera.dart';
 import '../api/api_service.dart';
 
 class OnlineRegistrationScreen extends StatefulWidget {
-  const OnlineRegistrationScreen({super.key});
+  final String? invitationToken; // Optional invitation token from URL
+
+  const OnlineRegistrationScreen({super.key, this.invitationToken});
 
   @override
   State<OnlineRegistrationScreen> createState() => _OnlineRegistrationScreenState();
@@ -26,7 +28,36 @@ class _OnlineRegistrationScreenState extends State<OnlineRegistrationScreen> {
   String? capturedImageBase64;
   bool isRegistering = false;
   bool isCapturing = false;
+  bool isValidatingToken = false;
+  bool tokenIsValid = false;
+  String? tokenValidationMessage;
+  String? invitedEmail;
+  String? urlToken; // Token parsed from URL
   CameraController? _cameraController;
+
+  @override
+  void initState() {
+    super.initState();
+    _parseUrlToken();
+    _validateInvitationToken();
+  }
+
+  void _parseUrlToken() {
+    // Parse token from URL if widget.invitationToken is not provided
+    // This handles direct URL access like: http://localhost/#/register?token=xyz
+    if (widget.invitationToken == null) {
+      try {
+        final uri = Uri.parse(html.window.location.href);
+        final token = uri.queryParameters['token'];
+        if (token != null && token.isNotEmpty) {
+          urlToken = token;
+          print('📧 Invitation token found in URL: ${token.substring(0, 8)}...');
+        }
+      } catch (e) {
+        print('Error parsing URL token: $e');
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -40,32 +71,184 @@ class _OnlineRegistrationScreenState extends State<OnlineRegistrationScreen> {
     super.dispose();
   }
 
+  // Get the active token (from widget or URL)
+  String? get activeToken => widget.invitationToken ?? urlToken;
+
+  Future<void> _validateInvitationToken() async {
+    // Check if token was provided (from widget or URL)
+    final token = activeToken;
+    if (token == null || token.isEmpty) {
+      // No token - regular open registration
+      return;
+    }
+
+    setState(() => isValidatingToken = true);
+
+    try {
+      final response = await apiService.validateInvitation(token);
+
+      if (mounted) {
+        setState(() {
+          isValidatingToken = false;
+          tokenIsValid = response['valid'] == true;
+          tokenValidationMessage = response['message'];
+
+          if (tokenIsValid) {
+            // Pre-fill email from invitation
+            invitedEmail = response['email'];
+            emailController.text = invitedEmail ?? '';
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          isValidatingToken = false;
+          tokenIsValid = false;
+          tokenValidationMessage = 'Error validating invitation';
+        });
+      }
+    }
+  }
+
   Future<void> capturePhoto() async {
     setState(() => isCapturing = true);
 
+    html.MediaStream? stream;
+    html.DivElement? cameraDiv;
+
     try {
-      // Use web file picker instead of camera for simplicity
-      final html.FileUploadInputElement uploadInput = html.FileUploadInputElement();
-      uploadInput.accept = 'image/*';
-      uploadInput.click();
+      // Access webcam using getUserMedia API
+      stream = await html.window.navigator.mediaDevices!.getUserMedia({
+        'video': {'facingMode': 'user'},
+        'audio': false,
+      });
 
-      uploadInput.onChange.listen((event) async {
-        final file = uploadInput.files!.first;
-        final reader = html.FileReader();
+      // Create video element to display camera feed
+      final html.VideoElement video = html.VideoElement()
+        ..srcObject = stream
+        ..autoplay = true
+        ..style.width = '100%'
+        ..style.maxWidth = '500px'
+        ..style.borderRadius = '8px';
 
-        reader.readAsDataUrl(file);
-        reader.onLoadEnd.listen((event) {
+      // Create canvas for capturing the photo
+      final html.CanvasElement canvas = html.CanvasElement();
+
+      // Create a div to hold video and buttons
+      cameraDiv = html.DivElement()
+        ..id = 'camera-overlay-${DateTime.now().millisecondsSinceEpoch}'
+        ..style.position = 'fixed'
+        ..style.top = '0'
+        ..style.left = '0'
+        ..style.width = '100%'
+        ..style.height = '100%'
+        ..style.backgroundColor = 'rgba(0, 0, 0, 0.9)'
+        ..style.display = 'flex'
+        ..style.flexDirection = 'column'
+        ..style.alignItems = 'center'
+        ..style.justifyContent = 'center'
+        ..style.zIndex = '9999'
+        ..style.padding = '20px';
+
+      final html.DivElement buttonContainer = html.DivElement()
+        ..style.marginTop = '20px'
+        ..style.display = 'flex'
+        ..style.gap = '10px';
+
+      final html.ButtonElement captureButton = html.ButtonElement()
+        ..text = 'Capture Photo'
+        ..style.padding = '12px 24px'
+        ..style.backgroundColor = '#1E3A8A'
+        ..style.color = 'white'
+        ..style.border = 'none'
+        ..style.borderRadius = '6px'
+        ..style.cursor = 'pointer'
+        ..style.fontSize = '16px';
+
+      final html.ButtonElement cancelButton = html.ButtonElement()
+        ..text = 'Cancel'
+        ..style.padding = '12px 24px'
+        ..style.backgroundColor = '#6B7280'
+        ..style.color = 'white'
+        ..style.border = 'none'
+        ..style.borderRadius = '6px'
+        ..style.cursor = 'pointer'
+        ..style.fontSize = '16px';
+
+      buttonContainer.append(captureButton);
+      buttonContainer.append(cancelButton);
+      cameraDiv!.append(video);
+      cameraDiv!.append(buttonContainer);
+      html.document.body!.append(cameraDiv!);
+
+      // Wait for button click using Future.any
+      bool captured = await Future.any([
+        captureButton.onClick.first.then((_) => true),
+        cancelButton.onClick.first.then((_) => false),
+      ]);
+
+      // If captured, process the image
+      if (captured) {
+        try {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          final html.CanvasRenderingContext2D context = canvas.context2D;
+          context.drawImage(video, 0, 0);
+
+          // Get base64 image
+          final String dataUrl = canvas.toDataUrl('image/jpeg', 0.9);
+          final String base64Image = dataUrl.split(',')[1];
+
+          // Update state with captured image
           setState(() {
-            final result = reader.result as String;
-            // Remove data:image/...;base64, prefix
-            capturedImageBase64 = result.split(',')[1];
+            capturedImageBase64 = base64Image;
             isCapturing = false;
           });
-        });
-      });
+        } catch (e) {
+          print('Error capturing image: $e');
+          setState(() => isCapturing = false);
+        }
+      } else {
+        // User cancelled
+        setState(() => isCapturing = false);
+      }
+
+      // Clean up: Stop camera and remove overlay
+      try {
+        final tracks = stream!.getTracks();
+        for (var track in tracks) {
+          track.stop();
+        }
+      } catch (e) {
+        print('Error stopping camera: $e');
+      }
+
+      try {
+        cameraDiv!.remove();
+      } catch (e) {
+        print('Error removing overlay: $e');
+      }
+
     } catch (e) {
       print('Error capturing photo: $e');
       setState(() => isCapturing = false);
+
+      // Clean up if error occurs
+      if (stream != null) {
+        try {
+          final tracks = stream!.getTracks();
+          for (var track in tracks) {
+            track.stop();
+          }
+        } catch (_) {}
+      }
+      if (cameraDiv != null) {
+        try {
+          cameraDiv!.remove();
+        } catch (_) {}
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -108,6 +291,18 @@ class _OnlineRegistrationScreenState extends State<OnlineRegistrationScreen> {
       setState(() => isRegistering = false);
 
       if (response['success'] == true) {
+        // Mark invitation as used if registration came from invitation
+        if (activeToken != null && tokenIsValid) {
+          try {
+            await apiService.markInvitationUsed(
+              activeToken!,
+              response['data']['employeeId'] ?? '',
+            );
+          } catch (e) {
+            print('Warning: Failed to mark invitation as used: $e');
+          }
+        }
+
         // Show success dialog
         showDialog(
           context: context,
@@ -256,7 +451,74 @@ class _OnlineRegistrationScreenState extends State<OnlineRegistrationScreen> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 32),
+                      const SizedBox(height: 24),
+
+                      // Invitation Status Banner
+                      if (activeToken != null) ...[
+                        if (isValidatingToken)
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.blue[50],
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.blue[200]!),
+                            ),
+                            child: const Row(
+                              children: [
+                                SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                                SizedBox(width: 12),
+                                Text('Validating invitation...'),
+                              ],
+                            ),
+                          )
+                        else if (tokenIsValid)
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.green[50],
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.green[200]!),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.check_circle, color: Colors.green[700], size: 20),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'Invitation accepted for $invitedEmail',
+                                    style: TextStyle(color: Colors.green[900]),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.red[50],
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.red[200]!),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.error, color: Colors.red[700], size: 20),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    tokenValidationMessage ?? 'Invalid invitation',
+                                    style: TextStyle(color: Colors.red[900]),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        const SizedBox(height: 16),
+                      ],
 
                       // First Name
                       TextFormField(
@@ -346,14 +608,18 @@ class _OnlineRegistrationScreenState extends State<OnlineRegistrationScreen> {
                       TextFormField(
                         controller: emailController,
                         keyboardType: TextInputType.emailAddress,
+                        readOnly: tokenIsValid, // Readonly if from invitation
                         decoration: InputDecoration(
                           labelText: 'Email *',
                           prefixIcon: const Icon(Icons.email_outlined),
+                          suffixIcon: tokenIsValid
+                              ? Icon(Icons.lock, size: 18, color: Colors.grey[600])
+                              : null,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
                           ),
                           filled: true,
-                          fillColor: Colors.white,
+                          fillColor: tokenIsValid ? Colors.grey[100] : Colors.white,
                         ),
                         validator: (value) {
                           if (value == null || value.isEmpty) {

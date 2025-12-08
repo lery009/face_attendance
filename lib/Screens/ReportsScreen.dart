@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'dart:html' as html;
 import '../api/api_service.dart';
 
 class ReportsScreen extends StatefulWidget {
@@ -70,6 +71,104 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
+  /// Download file for web
+  void _downloadFile(String url, String filename) {
+    print('📥 Downloading: $url');
+    final anchor = html.AnchorElement(href: url)
+      ..setAttribute('download', filename)
+      ..style.display = 'none';
+    html.document.body?.append(anchor);
+    anchor.click();
+    anchor.remove();
+  }
+
+  /// Export attendance as PDF
+  Future<void> _exportAsPdf() async {
+    try {
+      final dateStr = DateFormat('yyyy-MM-dd').format(selectedDate);
+      final url = apiService.getAttendanceExportUrl(
+        format: 'pdf',
+        date: dateStr,
+      );
+      final filename = 'attendance_report_${dateStr}.pdf';
+      _downloadFile(url, filename);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('📄 PDF report downloaded successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Export error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ Export failed: $e')),
+        );
+      }
+    }
+  }
+
+  /// Export attendance as Excel
+  Future<void> _exportAsExcel() async {
+    try {
+      final dateStr = DateFormat('yyyy-MM-dd').format(selectedDate);
+      final url = apiService.getAttendanceExportUrl(
+        format: 'excel',
+        date: dateStr,
+      );
+      final filename = 'attendance_report_${dateStr}.xlsx';
+      _downloadFile(url, filename);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('📊 Excel report downloaded successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Export error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ Export failed: $e')),
+        );
+      }
+    }
+  }
+
+  /// Export attendance as CSV
+  Future<void> _exportAsCsv() async {
+    try {
+      final dateStr = DateFormat('yyyy-MM-dd').format(selectedDate);
+      final url = apiService.getAttendanceExportUrl(
+        format: 'csv',
+        date: dateStr,
+      );
+      final filename = 'attendance_report_${dateStr}.csv';
+      _downloadFile(url, filename);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('📋 CSV report downloaded successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Export error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ Export failed: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final attendanceRate = reportData['totalEmployees']! > 0
@@ -85,12 +184,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.download),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Export feature coming soon!')),
-              );
-            },
-            tooltip: 'Export Report',
+            onPressed: _exportAsPdf,
+            tooltip: 'Download PDF Report',
           ),
         ],
       ),
@@ -296,23 +391,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            _buildExportOption('Export as PDF', Icons.picture_as_pdf, () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('PDF export coming soon!')),
-              );
-            }),
+            _buildExportOption('Export as PDF', Icons.picture_as_pdf, _exportAsPdf),
             const SizedBox(height: 8),
-            _buildExportOption('Export as Excel', Icons.table_chart, () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Excel export coming soon!')),
-              );
-            }),
+            _buildExportOption('Export as Excel', Icons.table_chart, _exportAsExcel),
             const SizedBox(height: 8),
-            _buildExportOption('Email Report', Icons.email, () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Email feature coming soon!')),
-              );
-            }),
+            _buildExportOption('Export as CSV', Icons.description, _exportAsCsv),
           ],
         ),
       ),

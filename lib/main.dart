@@ -29,10 +29,12 @@ class MyApp extends StatelessWidget {
 */
 
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:realtime_face_recognition_2026/Screens/DashboardScreen.dart';
+import 'package:realtime_face_recognition_2026/Screens/LoginScreen.dart';
+import 'package:realtime_face_recognition_2026/services/auth_service.dart';
+import 'package:realtime_face_recognition_2026/services/theme_service.dart';
 
 late List<CameraDescription> cameras;
 
@@ -48,20 +50,65 @@ Future<void> main() async {
     cameras = [];
   }
 
-  runApp(MyApp());
+  // Initialize services
+  await AuthService().init();
+  await ThemeService().init();
+
+  runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
+  const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  final ThemeService _themeService = ThemeService();
+
+  @override
+  void initState() {
+    super.initState();
+    // Listen to theme changes
+    _themeService.addListener(_onThemeChanged);
+  }
+
+  @override
+  void dispose() {
+    _themeService.removeListener(_onThemeChanged);
+    super.dispose();
+  }
+
+  void _onThemeChanged() {
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Face Recognition Attendance',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        primaryColor: const Color(0xFF1E3A8A),
-      ),
-      home: DashboardScreen(),
+      theme: ThemeService.lightTheme,
+      darkTheme: ThemeService.darkTheme,
+      themeMode: _themeService.themeMode,
+      home: const AuthWrapper(),
       debugShowCheckedModeBanner: false,
     );
+  }
+}
+
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final authService = AuthService();
+
+    // Check if user is authenticated
+    if (authService.isAuthenticated) {
+      return const DashboardScreen();
+    } else {
+      return const LoginScreen();
+    }
   }
 }

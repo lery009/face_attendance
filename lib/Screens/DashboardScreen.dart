@@ -2,13 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'WebRecognitionScreen.dart';
 import 'WebRegistrationScreen.dart';
-import 'RegisteredFacesScreen.dart';
 import 'AttendanceLogsScreen.dart';
 import 'ReportsScreen.dart';
 import 'EmployeeManagementScreen.dart';
 import 'OnlineRegistrationScreen.dart';
 import 'EventManagementScreen.dart';
+import 'AnalyticsDashboardScreen.dart';
+import 'UserManagementScreen.dart';
+import 'LoginScreen.dart';
+import 'QRCodeScannerScreen.dart';
+import 'LocationManagementScreen.dart';
+import 'NotificationSettingsScreen.dart';
+import 'BulkImportScreen.dart';
+import 'SendInvitationScreen.dart';
+import 'CameraManagementScreen.dart';
+import 'LiveMonitoringScreen.dart';
 import '../api/api_service.dart';
+import '../services/auth_service.dart';
+import '../services/theme_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -19,6 +30,8 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   final ApiService apiService = ApiService();
+  final AuthService authService = AuthService();
+  final ThemeService themeService = ThemeService();
 
   int todayAttendanceCount = 0;
   int totalEmployees = 0;
@@ -70,19 +83,103 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text(
-          'Face Recognition Attendance',
-          style: TextStyle(fontWeight: FontWeight.w600),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Face Recognition Attendance',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
+            ),
+            Text(
+              'Welcome, ${authService.userName}',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w300),
+            ),
+          ],
         ),
-        backgroundColor: const Color(0xFF1E3A8A), // Navy blue
-        elevation: 0,
         actions: [
+          // User role badge
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  authService.isAdmin
+                      ? Icons.admin_panel_settings
+                      : authService.isManager
+                          ? Icons.supervisor_account
+                          : Icons.person,
+                  size: 16,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  authService.userRole?.toUpperCase() ?? 'USER',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: loadDashboardData,
             tooltip: 'Refresh',
+          ),
+          IconButton(
+            icon: Icon(themeService.isDarkMode ? Icons.light_mode : Icons.dark_mode),
+            onPressed: () {
+              themeService.toggleTheme();
+            },
+            tooltip: themeService.isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode',
+          ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.account_circle),
+            tooltip: 'Account Menu',
+            onSelected: (value) async {
+              if (value == 'logout') {
+                await authService.logout();
+                if (!mounted) return;
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  (route) => false,
+                );
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                enabled: false,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      authService.userName,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    Text(
+                      authService.userEmail,
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    ),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'logout',
+                child: Row(
+                  children: [
+                    Icon(Icons.logout, size: 20),
+                    SizedBox(width: 12),
+                    Text('Logout'),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -223,6 +320,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                     const SizedBox(height: 12),
                     _buildNavigationCard(
+                      'QR Code Scanner',
+                      'Scan QR codes to mark attendance',
+                      Icons.qr_code_scanner,
+                      () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const QRCodeScannerScreen()),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildNavigationCard(
+                      'Analytics Dashboard',
+                      'View detailed charts and statistics',
+                      Icons.analytics,
+                      () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const AnalyticsDashboardScreen()),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildNavigationCard(
                       'Reports & Analytics',
                       'Generate attendance reports',
                       Icons.bar_chart,
@@ -239,6 +356,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       () => Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const EmployeeManagementScreen()),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildNavigationCard(
+                      'Bulk Import Employees',
+                      'Import multiple employees from CSV file',
+                      Icons.cloud_upload,
+                      () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const BulkImportScreen()),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildNavigationCard(
+                      'Send Invitation',
+                      'Invite employees to register via email',
+                      Icons.mail_outline,
+                      () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const SendInvitationScreen()),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -261,6 +398,59 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         MaterialPageRoute(builder: (_) => const OnlineRegistrationScreen()),
                       ),
                     ),
+                    // Admin-only: User Management, Location Management & Notification Settings
+                    if (authService.isAdmin) ...[
+                      const SizedBox(height: 12),
+                      _buildNavigationCard(
+                        'User Management',
+                        'Manage system users and permissions',
+                        Icons.people,
+                        () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const UserManagementScreen()),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildNavigationCard(
+                        'Location Management',
+                        'Configure GPS geofencing locations',
+                        Icons.map,
+                        () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const LocationManagementScreen()),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildNavigationCard(
+                        'Notification Settings',
+                        'Configure email notifications and SMTP settings',
+                        Icons.notifications_active,
+                        () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const NotificationSettingsScreen()),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildNavigationCard(
+                        'Camera Management',
+                        'Manage IP cameras for event monitoring',
+                        Icons.videocam,
+                        () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const CameraManagementScreen()),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildNavigationCard(
+                        'Live Monitoring',
+                        'View live camera feeds with face recognition',
+                        Icons.monitor,
+                        () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const LiveMonitoringScreen()),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

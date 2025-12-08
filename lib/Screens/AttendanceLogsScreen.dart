@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'dart:html' as html;
 import '../api/api_service.dart';
 
 class AttendanceLogsScreen extends StatefulWidget {
@@ -11,9 +12,19 @@ class AttendanceLogsScreen extends StatefulWidget {
 
 class _AttendanceLogsScreenState extends State<AttendanceLogsScreen> {
   final ApiService apiService = ApiService();
+  final TextEditingController searchController = TextEditingController();
+
   List<Map<String, dynamic>> attendanceLogs = [];
   bool isLoading = true;
   DateTime selectedDate = DateTime.now();
+  String searchQuery = '';
+  String? selectedStatus;
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -26,7 +37,11 @@ class _AttendanceLogsScreenState extends State<AttendanceLogsScreen> {
 
     try {
       final dateStr = DateFormat('yyyy-MM-dd').format(selectedDate);
-      final response = await apiService.getAttendanceLogs(date: dateStr);
+      final response = await apiService.getAttendanceLogs(
+        date: dateStr,
+        search: searchQuery.isNotEmpty ? searchQuery : null,
+        status: selectedStatus,
+      );
 
       setState(() {
         if (response['success'] == true) {
@@ -37,6 +52,8 @@ class _AttendanceLogsScreenState extends State<AttendanceLogsScreen> {
             'timestamp': log['timestamp'] ?? '',
             'confidence': log['confidence'] ?? '0',
             'method': log['method'] ?? 'face_recognition',
+            'status': log['status'] ?? 'on_time',
+            'notes': log['notes'] ?? '',
           }).toList();
         }
         isLoading = false;
@@ -71,6 +88,81 @@ class _AttendanceLogsScreenState extends State<AttendanceLogsScreen> {
     }
   }
 
+  /// Show export options dialog
+  void _showExportDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Export Attendance'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.picture_as_pdf, color: Colors.red),
+              title: const Text('Export as PDF'),
+              onTap: () {
+                Navigator.pop(context);
+                _exportAs('pdf');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.table_chart, color: Colors.green),
+              title: const Text('Export as Excel'),
+              onTap: () {
+                Navigator.pop(context);
+                _exportAs('excel');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.description, color: Colors.blue),
+              title: const Text('Export as CSV'),
+              onTap: () {
+                Navigator.pop(context);
+                _exportAs('csv');
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Export attendance data
+  void _exportAs(String format) {
+    try {
+      final dateStr = DateFormat('yyyy-MM-dd').format(selectedDate);
+      final url = apiService.getAttendanceExportUrl(
+        format: format,
+        date: dateStr,
+      );
+      final filename = 'attendance_${dateStr}.${{
+        'pdf': 'pdf',
+        'excel': 'xlsx',
+        'csv': 'csv',
+      }[format]}';
+
+      // Trigger download
+      final anchor = html.AnchorElement(href: url)
+        ..setAttribute('download', filename)
+        ..style.display = 'none';
+      html.document.body?.append(anchor);
+      anchor.click();
+      anchor.remove();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('📥 ${format.toUpperCase()} export downloaded!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      print('Export error: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ Export failed: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -84,6 +176,11 @@ class _AttendanceLogsScreenState extends State<AttendanceLogsScreen> {
             icon: const Icon(Icons.calendar_today),
             onPressed: selectDate,
             tooltip: 'Select Date',
+          ),
+          IconButton(
+            icon: const Icon(Icons.download),
+            onPressed: _showExportDialog,
+            tooltip: 'Export Data',
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -117,6 +214,98 @@ class _AttendanceLogsScreenState extends State<AttendanceLogsScreen> {
                     color: Colors.white.withOpacity(0.9),
                     fontSize: 14,
                   ),
+                ),
+              ],
+            ),
+          ),
+
+          // Search and Filter Bar
+          Container(
+            padding: const EdgeInsets.all(16),
+            color: Colors.white,
+            child: Column(
+              children: [
+                // Search field
+                TextField(
+                  controller: searchController,
+                  decoration: InputDecoration(
+                    hintText: 'Search by name or employee ID...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              searchController.clear();
+                              setState(() => searchQuery = '');
+                              loadAttendanceLogs();
+                            },
+                          )
+                        : null,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: Colors.grey[300]!),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                  onChanged: (value) {
+                    setState(() => searchQuery = value);
+                    // Debounce search
+                    Future.delayed(const Duration(milliseconds: 500), () {
+                      if (searchQuery == value) {
+                        loadAttendanceLogs();
+                      }
+                    });
+                  },
+                ),
+                const SizedBox(height: 12),
+                // Status filter
+                Row(
+                  children: [
+                    const Text('Status:', style: TextStyle(fontWeight: FontWeight.w500)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Wrap(
+                        spacing: 8,
+                        children: [
+                          FilterChip(
+                            label: const Text('All'),
+                            selected: selectedStatus == null,
+                            onSelected: (selected) {
+                              setState(() => selectedStatus = null);
+                              loadAttendanceLogs();
+                            },
+                          ),
+                          FilterChip(
+                            label: const Text('On Time'),
+                            selected: selectedStatus == 'on_time',
+                            selectedColor: Colors.green[100],
+                            onSelected: (selected) {
+                              setState(() => selectedStatus = selected ? 'on_time' : null);
+                              loadAttendanceLogs();
+                            },
+                          ),
+                          FilterChip(
+                            label: const Text('Late'),
+                            selected: selectedStatus == 'late',
+                            selectedColor: Colors.orange[100],
+                            onSelected: (selected) {
+                              setState(() => selectedStatus = selected ? 'late' : null);
+                              loadAttendanceLogs();
+                            },
+                          ),
+                          FilterChip(
+                            label: const Text('Half Day'),
+                            selected: selectedStatus == 'half_day',
+                            selectedColor: Colors.red[100],
+                            onSelected: (selected) {
+                              setState(() => selectedStatus = selected ? 'half_day' : null);
+                              loadAttendanceLogs();
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
